@@ -189,7 +189,7 @@ export const Contact: React.FC = () => {
                 <Phone className="w-5 h-5 text-neutral-400" />
                 <div>
                   <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">CALL US</p>
-                  <p className="text-sm font-semibold text-white">+880 1712-345678</p>
+                  <p className="text-sm font-semibold text-white">01717416107</p>
                 </div>
               </div>
 
