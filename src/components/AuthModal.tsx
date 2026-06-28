@@ -2,9 +2,9 @@ import React from 'react';
 import { X, Lock, Phone, User as UserIcon, Mail } from 'lucide-react';
 import type { User } from '../types';
 import { sendToGoogleSheet } from '../utils/googleSheets';
-import { setDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, setDoc, doc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -62,6 +62,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
           setLoading(false);
           return;
         }
+        if (!formData.email.trim()) {
+          setError('Please enter your email address.');
+          setLoading(false);
+          return;
+        }
         if (formData.password.length < 6) {
           setError('Password must be at least 6 characters.');
           setLoading(false);
@@ -74,14 +79,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
         }
 
         const userDocRef = doc(db, 'users', formData.phone);
-        const dummyEmail = `${formData.phone}@darkmatter.local`;
 
         try {
-          // Create new account in Firebase Auth using dummy email
-          await createUserWithEmailAndPassword(auth, dummyEmail, formData.password);
+          // Create new account in Firebase Auth using REAL email
+          await createUserWithEmailAndPassword(auth, formData.email, formData.password);
         } catch (authError: any) {
           if (authError.code === 'auth/email-already-in-use') {
-            setError('An account with this phone number already exists.');
+            setError('An account with this email already exists.');
           } else {
             console.error("Auth Error:", authError);
             setError('Registration failed. Please try again.');
@@ -94,7 +98,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
         const newUser = {
           name: formData.name,
           phone: formData.phone,
-          email: formData.email || null,
+          email: formData.email,
           createdAt: new Date().toISOString(),
         };
 
@@ -106,31 +110,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
           type: 'user',
           name: newUser.name,
           phone: newUser.phone,
-          email: newUser.email || undefined,
+          email: newUser.email,
         });
 
         // Auto login after registration
-        onLogin({ name: newUser.name, phone: newUser.phone, email: newUser.email || undefined });
+        onLogin({ name: newUser.name, phone: newUser.phone, email: newUser.email });
         onClose();
       } else {
         // Login flow
-        const dummyEmail = `${formData.phone}@darkmatter.local`;
+        if (!formData.email.trim()) {
+          setError('Please enter your email address.');
+          setLoading(false);
+          return;
+        }
+
         try {
-          await signInWithEmailAndPassword(auth, dummyEmail, formData.password);
+          await signInWithEmailAndPassword(auth, formData.email, formData.password);
           
-          // Fetch user details from Firestore
-          const userDocRef = doc(db, 'users', formData.phone);
-          const userDocSnap = await getDoc(userDocRef);
+          // Fetch user details from Firestore by querying the email
+          const usersRef = collection(db, 'users');
+          const q = query(usersRef, where('email', '==', formData.email));
+          const querySnapshot = await getDocs(q);
           
-          if (userDocSnap.exists()) {
-            const userData = userDocSnap.data();
-            onLogin({ name: userData.name, phone: userData.phone, email: userData.email || undefined });
+          if (!querySnapshot.empty) {
+            const userData = querySnapshot.docs[0].data();
+            onLogin({ name: userData.name, phone: userData.phone, email: userData.email });
             onClose();
           } else {
             setError('User profile not found. Please contact support.');
           }
         } catch (authError: any) {
-          setError('Invalid phone number or password.');
+          setError('Invalid email or password.');
         }
       }
     } catch (err) {
@@ -201,18 +211,46 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
           <div className="text-center py-8">
             <h3 className="text-white text-lg font-bold uppercase tracking-widest mb-4">Reset Password</h3>
             <p className="text-neutral-400 text-sm leading-relaxed mb-8">
-              Because your account is securely linked to your phone number, you must contact our Support Team to verify your identity and reset your password.
+              Enter the email address you registered with, and we will send you a secure link to reset your password.
             </p>
-            <a 
-              href="https://wa.me/8801700000000" 
-              target="_blank" 
-              rel="noopener noreferrer"
+            <div className="mb-6 text-left">
+              <label className="block text-neutral-500 text-[10px] uppercase font-bold tracking-widest mb-1.5">EMAIL ADDRESS</label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-neutral-500">
+                  <Mail className="w-4 h-4" />
+                </span>
+                <input
+                  type="email"
+                  placeholder="john@example.com"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full bg-brand-charcoal border border-neutral-850 text-white pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-neutral-500"
+                />
+              </div>
+            </div>
+            <button
+              onClick={async () => {
+                if (!formData.email.trim()) {
+                  setError('Please enter your email address to reset your password.');
+                  return;
+                }
+                setLoading(true);
+                try {
+                  await sendPasswordResetEmail(auth, formData.email);
+                  alert('Password reset email sent! Check your inbox.');
+                  setShowForgot(false);
+                } catch (e: any) {
+                  setError('Failed to send reset email. Ensure the email is correct.');
+                }
+                setLoading(false);
+              }}
+              disabled={loading}
               className="inline-block w-full bg-white text-black border border-white py-4 text-xs font-bold uppercase tracking-widest hover:bg-black hover:text-white transition-colors duration-300"
             >
-              Contact Support via WhatsApp
-            </a>
+              {loading ? 'SENDING...' : 'SEND RESET LINK'}
+            </button>
             <button
-              onClick={() => setShowForgot(false)}
+              onClick={() => { setShowForgot(false); setError(''); }}
               className="mt-6 text-neutral-500 text-xs font-bold uppercase tracking-widest hover:text-white transition-colors"
             >
               Back to Login
@@ -239,40 +277,41 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
             </div>
           )}
 
-          <div>
-            <label className="block text-neutral-500 text-[10px] uppercase font-bold tracking-widest mb-1.5">PHONE NUMBER</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-neutral-500">
-                <Phone className="w-4 h-4" />
-              </span>
-              <input
-                type="tel"
-                required
-                placeholder="e.g. 017XXXXXXXX"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                className="w-full bg-brand-charcoal border border-neutral-850 text-white pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-neutral-500"
-              />
-            </div>
-          </div>
-
           {tab === 'register' && (
             <div>
-              <label className="block text-neutral-500 text-[10px] uppercase font-bold tracking-widest mb-1.5">EMAIL (OPTIONAL)</label>
+              <label className="block text-neutral-500 text-[10px] uppercase font-bold tracking-widest mb-1.5">PHONE NUMBER</label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-neutral-500">
-                  <Mail className="w-4 h-4" />
+                  <Phone className="w-4 h-4" />
                 </span>
                 <input
-                  type="email"
-                  placeholder="john@example.com"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  type="tel"
+                  required
+                  placeholder="e.g. 017XXXXXXXX"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   className="w-full bg-brand-charcoal border border-neutral-850 text-white pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-neutral-500"
                 />
               </div>
             </div>
           )}
+
+          <div>
+            <label className="block text-neutral-500 text-[10px] uppercase font-bold tracking-widest mb-1.5">EMAIL ADDRESS</label>
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-neutral-500">
+                <Mail className="w-4 h-4" />
+              </span>
+              <input
+                type="email"
+                required
+                placeholder="john@example.com"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                className="w-full bg-brand-charcoal border border-neutral-850 text-white pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-neutral-500"
+              />
+            </div>
+          </div>
 
           <div>
             <label className="block text-neutral-500 text-[10px] uppercase font-bold tracking-widest mb-1.5">PASSWORD</label>
