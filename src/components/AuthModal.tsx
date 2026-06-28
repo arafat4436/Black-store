@@ -49,14 +49,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
     setError('');
     setLoading(true);
 
-    if (!validatePhone(formData.phone)) {
-      setError('Please enter a valid 11-digit Bangladeshi phone number (e.g., 017XXXXXXXX).');
-      setLoading(false);
-      return;
-    }
-
     try {
       if (tab === 'register') {
+        if (!validatePhone(formData.phone)) {
+          setError('Please enter a valid 11-digit Bangladeshi phone number (e.g., 017XXXXXXXX).');
+          setLoading(false);
+          return;
+        }
         if (!formData.name.trim()) {
           setError('Please enter your full name.');
           setLoading(false);
