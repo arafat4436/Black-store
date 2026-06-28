@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { Home } from './pages/Home';
@@ -13,61 +13,97 @@ import { AuthModal } from './components/AuthModal';
 import { AdminLogin } from './components/AdminLogin';
 import { products as defaultProducts } from './data/products';
 import type { Product, CartItem, Order, User } from './types';
+import { collection, onSnapshot, doc, getDoc, setDoc, query, where } from 'firebase/firestore';
+import { db } from './lib/firebase';
 
 function App() {
   const [currentPage, setCurrentPage] = React.useState<string>('home');
   const [isAdminAuthenticated, setIsAdminAuthenticated] = React.useState(false);
+  
+  // Local cart for guests, will be merged/synced when logged in
   const [cartItems, setCartItems] = React.useState<CartItem[]>(() => {
     const saved = localStorage.getItem('dark_matter_cart');
     return saved ? JSON.parse(saved) : [];
   });
   
-  const [currentUser, setCurrentUser] = React.useState<User | null>(() => {
-    const saved = localStorage.getItem('dark_matter_currentUser');
-    return saved ? JSON.parse(saved) : null;
-  });
-
-  const [orders, setOrders] = React.useState<Order[]>(() => {
-    const saved = localStorage.getItem('dark_matter_orders');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [productsList, setProductsList] = React.useState<Product[]>(() => {
-    const saved = localStorage.getItem('dark_matter_products');
-    return saved ? JSON.parse(saved) : defaultProducts;
-  });
+  const [currentUser, setCurrentUser] = React.useState<User | null>(null);
+  const [orders, setOrders] = React.useState<Order[]>([]);
+  const [productsList, setProductsList] = React.useState<Product[]>(defaultProducts);
 
   const [cartOpen, setCartOpen] = React.useState(false);
   const [checkoutOpen, setCheckoutOpen] = React.useState(false);
   const [authOpen, setAuthOpen] = React.useState(false);
   const [toast, setToast] = React.useState<string | null>(null);
 
-  // Sync cart to localStorage
-  React.useEffect(() => {
-    localStorage.setItem('dark_matter_cart', JSON.stringify(cartItems));
-  }, [cartItems]);
-
-  // Sync user session to localStorage
-  React.useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('dark_matter_currentUser', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('dark_matter_currentUser');
+  // 1. Initialize Session & User Data
+  useEffect(() => {
+    const sessionPhone = localStorage.getItem('dark_matter_session');
+    if (sessionPhone) {
+      getDoc(doc(db, 'users', sessionPhone)).then(docSnap => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setCurrentUser({ name: data.name, phone: data.phone, email: data.email });
+          if (data.cart) {
+            setCartItems(data.cart);
+          }
+        } else {
+          localStorage.removeItem('dark_matter_session');
+        }
+      }).catch(console.error);
     }
-  }, [currentUser]);
+  }, []);
 
-  // Sync orders to localStorage
-  React.useEffect(() => {
-    localStorage.setItem('dark_matter_orders', JSON.stringify(orders));
-  }, [orders]);
+  // 2. Sync Cart to LocalStorage and Firestore
+  useEffect(() => {
+    localStorage.setItem('dark_matter_cart', JSON.stringify(cartItems));
+    if (currentUser) {
+      setDoc(doc(db, 'users', currentUser.phone), { cart: cartItems }, { merge: true }).catch(console.error);
+    }
+  }, [cartItems, currentUser]);
 
-  // Sync products to localStorage
-  React.useEffect(() => {
-    localStorage.setItem('dark_matter_products', JSON.stringify(productsList));
-  }, [productsList]);
+  // 3. Real-time Products Sync
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'products'), (snapshot) => {
+      if (snapshot.empty) {
+        // Seed default products if db is empty
+        defaultProducts.forEach(p => {
+          setDoc(doc(db, 'products', p.id), p);
+        });
+        setProductsList(defaultProducts);
+      } else {
+        const liveProducts = snapshot.docs.map(doc => doc.data() as Product);
+        setProductsList(liveProducts);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 4. Real-time Orders Sync (Scoped by role)
+  useEffect(() => {
+    let q;
+    if (isAdminAuthenticated) {
+      // Admin sees all orders
+      q = collection(db, 'orders');
+    } else if (currentUser) {
+      // User sees their own orders
+      q = query(collection(db, 'orders'), where('customer.phone', '==', currentUser.phone));
+    } else {
+      setOrders([]);
+      return;
+    }
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const liveOrders = snapshot.docs.map(doc => doc.data() as Order);
+      // Sort by date descending (newest first)
+      liveOrders.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setOrders(liveOrders);
+    });
+
+    return () => unsubscribe();
+  }, [isAdminAuthenticated, currentUser]);
 
   // Toast timer auto-clear
-  React.useEffect(() => {
+  useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => {
         setToast(null);
@@ -90,7 +126,6 @@ function App() {
         return [...prevItems, { product, size, quantity: 1 }];
       }
     });
-    // Trigger toast notification instead of opening cart drawer
     const sizeText = size !== 'N/A' ? ` (${size})` : '';
     setToast(`ADDED: ${product.name}${sizeText}`);
   };
@@ -122,32 +157,31 @@ function App() {
     setCheckoutOpen(true);
   };
 
-  const handleOrderPlaced = (newOrder: Order) => {
-    setOrders((prevOrders) => [...prevOrders, newOrder]);
+  const handleOrderPlaced = async (newOrder: Order) => {
+    // Save order to Firestore
+    await setDoc(doc(db, 'orders', newOrder.orderId), newOrder);
   };
 
-  const handleUpdateOrderStatus = (orderId: string, newStatus: Order['status']) => {
-    setOrders((prevOrders) => {
-      return prevOrders.map((order) => {
-        if (order.orderId === orderId) {
-          return { ...order, status: newStatus };
-        }
-        return order;
-      });
-    });
+  const handleUpdateOrderStatus = async (orderId: string, newStatus: Order['status']) => {
+    // Update order status in Firestore
+    await setDoc(doc(db, 'orders', orderId), { status: newStatus }, { merge: true });
   };
 
-  const handleAddProduct = (newProduct: Product) => {
-    setProductsList((prevProducts) => [...prevProducts, newProduct]);
+  const handleAddProduct = async (newProduct: Product) => {
+    // Add product to Firestore
+    await setDoc(doc(db, 'products', newProduct.id), newProduct);
   };
 
   const handleLogin = (user: User) => {
+    localStorage.setItem('dark_matter_session', user.phone);
     setCurrentUser(user);
     setCurrentPage('account');
   };
 
   const handleLogout = () => {
+    localStorage.removeItem('dark_matter_session');
     setCurrentUser(null);
+    setCartItems([]); // Clear local cart on logout to prevent next user from seeing it
     setCurrentPage('home');
   };
 
@@ -173,7 +207,7 @@ function App() {
   };
 
   // Scroll to top on page change
-  React.useEffect(() => {
+  useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, [currentPage]);
 
@@ -210,7 +244,6 @@ function App() {
 
   return (
     <div className="flex flex-col min-h-screen bg-black text-white selection:bg-white selection:text-black">
-      {/* Navigation Header */}
       <Header
         currentPage={currentPage}
         onNavigate={setCurrentPage}
@@ -220,15 +253,12 @@ function App() {
         onOpenAuth={() => setAuthOpen(true)}
       />
 
-      {/* Page Content */}
       <main className="flex-grow">
         {renderPage()}
       </main>
 
-      {/* Footer */}
       <Footer onNavigate={setCurrentPage} />
 
-      {/* Sliding Cart Drawer Overlay */}
       <CartDrawer
         isOpen={cartOpen}
         onClose={() => setCartOpen(false)}
@@ -238,7 +268,6 @@ function App() {
         onCheckout={handleCheckoutOpen}
       />
 
-      {/* Centered COD Checkout Popup Modal */}
       <CheckoutModal
         isOpen={checkoutOpen}
         onClose={() => setCheckoutOpen(false)}
@@ -248,14 +277,12 @@ function App() {
         onOrderPlaced={handleOrderPlaced}
       />
 
-      {/* User Login/Register Modal */}
       <AuthModal
         isOpen={authOpen}
         onClose={() => setAuthOpen(false)}
         onLogin={handleLogin}
       />
 
-      {/* Toast Notification */}
       {toast && (
         <div className="fixed bottom-5 right-5 z-50 bg-white text-black border border-white px-6 py-4 flex items-center gap-3 animate-fade-in shadow-2xl font-sans text-xs font-bold uppercase tracking-widest">
           <span className="bg-black text-white w-5 h-5 flex items-center justify-center font-bold text-[10px]">✓</span>

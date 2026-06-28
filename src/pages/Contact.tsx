@@ -1,6 +1,8 @@
 import React from 'react';
 import { Mail, Phone, MapPin, ChevronDown, ChevronUp, Search, Package, Clock, Truck, CheckCircle } from 'lucide-react';
 import type { Order } from '../types';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface FAQItem {
   question: string;
@@ -28,7 +30,7 @@ export const Contact: React.FC = () => {
     setFormData({ name: '', email: '', orderId: '', message: '' });
   };
 
-  const handleTrackOrder = (e: React.FormEvent) => {
+  const handleTrackOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setHasSearched(true);
     
@@ -38,19 +40,31 @@ export const Contact: React.FC = () => {
       return;
     }
 
-    // Load orders directly from localStorage
-    const savedOrders: Order[] = JSON.parse(
-      localStorage.getItem('dark_matter_orders') || '[]'
-    );
+    try {
+      const ordersToSet: Order[] = [];
 
-    // Search by Order ID (exact match) or Customer Phone (match digits)
-    const matches = savedOrders.filter(
-      (order) => 
-        order.orderId.toUpperCase() === input || 
-        order.customer.phone.replace(/[-\s]/g, '') === input.replace(/[-\s]/g, '')
-    );
+      // Check if it's an Order ID (e.g. DM-12345)
+      if (input.startsWith('DM-')) {
+        const orderDoc = await getDoc(doc(db, 'orders', input));
+        if (orderDoc.exists()) {
+          ordersToSet.push(orderDoc.data() as Order);
+        }
+      } else {
+        // Otherwise, try searching by phone number
+        // Clean phone number (remove spaces, dashes)
+        const cleanPhone = input.replace(/[-\s]/g, '');
+        const q = query(collection(db, 'orders'), where('customer.phone', '==', cleanPhone));
+        const querySnapshot = await getDocs(q);
+        querySnapshot.forEach((doc) => {
+          ordersToSet.push(doc.data() as Order);
+        });
+      }
 
-    setTrackedOrders(matches);
+      setTrackedOrders(ordersToSet);
+    } catch (err) {
+      console.error("Error fetching orders:", err);
+      setTrackedOrders([]);
+    }
   };
 
   const faqs: FAQItem[] = [

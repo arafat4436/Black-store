@@ -2,6 +2,8 @@ import React from 'react';
 import { X, Lock, Phone, User as UserIcon, Mail } from 'lucide-react';
 import type { User } from '../types';
 import { sendToGoogleSheet } from '../utils/googleSheets';
+import { collection, query, where, getDocs, setDoc, doc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -19,6 +21,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
     confirmPassword: '',
   });
   const [error, setError] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
 
   if (!isOpen) return null;
 
@@ -38,77 +41,95 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
     return /^01[3-9]\d{8}$/.test(phone); // Bangladeshi 11-digit mobile validation
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
-    const accountsKey = 'dark_matter_accounts';
-    const accounts: (User & { password: string })[] = JSON.parse(
-      localStorage.getItem(accountsKey) || '[]'
-    );
+    setLoading(true);
 
     if (!validatePhone(formData.phone)) {
       setError('Please enter a valid 11-digit Bangladeshi phone number (e.g., 017XXXXXXXX).');
+      setLoading(false);
       return;
     }
 
-    if (tab === 'register') {
-      if (!formData.name.trim()) {
-        setError('Please enter your full name.');
-        return;
+    try {
+      const usersRef = collection(db, 'users');
+
+      if (tab === 'register') {
+        if (!formData.name.trim()) {
+          setError('Please enter your full name.');
+          setLoading(false);
+          return;
+        }
+        if (formData.password.length < 6) {
+          setError('Password must be at least 6 characters.');
+          setLoading(false);
+          return;
+        }
+        if (formData.password !== formData.confirmPassword) {
+          setError('Passwords do not match.');
+          setLoading(false);
+          return;
+        }
+
+        // Check if account already exists
+        const q = query(usersRef, where('phone', '==', formData.phone));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          setError('An account with this phone number already exists.');
+          setLoading(false);
+          return;
+        }
+
+        // Create new account
+        const newUser = {
+          name: formData.name,
+          phone: formData.phone,
+          email: formData.email || null,
+          password: formData.password, // In a real app, hash this!
+          createdAt: new Date().toISOString(),
+        };
+
+        // Use the phone number as the document ID for easy querying
+        await setDoc(doc(db, 'users', formData.phone), newUser);
+        
+        // Sync new user to Google Sheet in real-time
+        sendToGoogleSheet({
+          type: 'user',
+          name: newUser.name,
+          phone: newUser.phone,
+          email: newUser.email || undefined,
+          password: newUser.password,
+        });
+
+        // Auto login after registration
+        onLogin({ name: newUser.name, phone: newUser.phone, email: newUser.email || undefined });
+        onClose();
+      } else {
+        // Login flow
+        const q = query(
+          usersRef, 
+          where('phone', '==', formData.phone),
+          where('password', '==', formData.password)
+        );
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
+          setError('Invalid phone number or password.');
+          setLoading(false);
+          return;
+        }
+
+        const userData = querySnapshot.docs[0].data();
+        onLogin({ name: userData.name, phone: userData.phone, email: userData.email || undefined });
+        onClose();
       }
-      if (formData.password.length < 6) {
-        setError('Password must be at least 6 characters.');
-        return;
-      }
-      if (formData.password !== formData.confirmPassword) {
-        setError('Passwords do not match.');
-        return;
-      }
-
-      // Check if account already exists
-      const exists = accounts.some((acc) => acc.phone === formData.phone);
-      if (exists) {
-        setError('An account with this phone number already exists.');
-        return;
-      }
-
-      // Create new account
-      const newUser = {
-        name: formData.name,
-        phone: formData.phone,
-        email: formData.email || undefined,
-        password: formData.password,
-      };
-
-      accounts.push(newUser);
-      localStorage.setItem(accountsKey, JSON.stringify(accounts));
-      
-      // Sync new user to Google Sheet in real-time
-      sendToGoogleSheet({
-        type: 'user',
-        name: newUser.name,
-        phone: newUser.phone,
-        email: newUser.email,
-        password: newUser.password,
-      });
-
-      // Auto login after registration
-      onLogin({ name: newUser.name, phone: newUser.phone, email: newUser.email });
-      onClose();
-    } else {
-      // Login flow
-      const account = accounts.find(
-        (acc) => acc.phone === formData.phone && acc.password === formData.password
-      );
-
-      if (!account) {
-        setError('Invalid phone number or password.');
-        return;
-      }
-
-      onLogin({ name: account.name, phone: account.phone, email: account.email });
-      onClose();
+    } catch (err) {
+      console.error("Auth Error:", err);
+      setError('An error occurred while connecting to the server. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -261,9 +282,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
 
           <button
             type="submit"
-            className="w-full bg-white text-black hover:bg-black hover:text-white border border-white py-4 text-xs font-bold uppercase tracking-widest transition-colors duration-300 mt-6"
+            disabled={loading}
+            className={`w-full bg-white text-black border border-white py-4 text-xs font-bold uppercase tracking-widest transition-colors duration-300 mt-6 ${
+              loading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-black hover:text-white'
+            }`}
           >
-            {tab === 'login' ? 'LOG IN' : 'CREATE ACCOUNT'}
+            {loading ? 'PROCESSING...' : (tab === 'login' ? 'LOG IN' : 'CREATE ACCOUNT')}
           </button>
         </form>
       </div>

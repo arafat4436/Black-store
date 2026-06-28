@@ -76,11 +76,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         userPhone: currentUser ? currentUser.phone : undefined
       };
 
-      // Save order to localStorage database
-      const ordersKey = 'dark_matter_orders';
-      const existingOrders: Order[] = JSON.parse(localStorage.getItem(ordersKey) || '[]');
-      existingOrders.push(newOrder);
-      localStorage.setItem(ordersKey, JSON.stringify(existingOrders));
+
 
       // Propagate order back to parent state
       onOrderPlaced(newOrder);
