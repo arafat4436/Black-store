@@ -27,7 +27,7 @@ export const Home: React.FC<HomeProps> = ({ onNavigate, products }) => {
       <section 
         className="relative h-[90vh] flex items-center justify-center bg-cover bg-center"
         style={{ 
-          backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.9)), url('/images/hero-bg.png')`,
+          backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.9)), url('./images/hero-bg.png')`,
         }}
       >
         <div className="text-center px-4 max-w-4xl z-10">

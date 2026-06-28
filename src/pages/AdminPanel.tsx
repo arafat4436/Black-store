@@ -74,7 +74,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       category: newProduct.category,
       price: priceNum,
       // Default placeholder if image is empty
-      image: newProduct.image.trim() || '/images/tee-stealth.png',
+      image: newProduct.image.trim() || './images/tee-stealth.png',
       description: newProduct.description,
     };
 
@@ -396,7 +396,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <label className="block text-neutral-500 text-[10px] uppercase font-bold tracking-widest mb-2">IMAGE FILE PATH (OPTIONAL)</label>
                       <input
                         type="text"
-                        placeholder="/images/tee-stealth.png"
+                        placeholder="./images/tee-stealth.png"
                         value={newProduct.image}
                         onChange={(e) => setNewProduct({ ...newProduct, image: e.target.value })}
                         className="w-full bg-black border border-neutral-800 text-white px-4 py-3 text-sm focus:outline-none focus:border-neutral-500"
