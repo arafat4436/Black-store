@@ -71,19 +71,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
           return;
         }
 
-        // Check if account already exists
         const userDocRef = doc(db, 'users', formData.phone);
-        const userDocSnap = await getDoc(userDocRef);
-        
-        if (userDocSnap.exists()) {
-          setError('An account with this phone number already exists.');
+        const dummyEmail = `${formData.phone}@darkmatter.local`;
+
+        try {
+          // Create new account in Firebase Auth using dummy email
+          await createUserWithEmailAndPassword(auth, dummyEmail, formData.password);
+        } catch (authError: any) {
+          if (authError.code === 'auth/email-already-in-use') {
+            setError('An account with this phone number already exists.');
+          } else {
+            console.error("Auth Error:", authError);
+            setError('Registration failed. Please try again.');
+          }
           setLoading(false);
           return;
         }
-
-        // Create new account in Firebase Auth using dummy email
-        const dummyEmail = `${formData.phone}@darkmatter.local`;
-        await createUserWithEmailAndPassword(auth, dummyEmail, formData.password);
 
         // Create new account in Firestore (without password!)
         const newUser = {
