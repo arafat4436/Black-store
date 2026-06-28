@@ -172,8 +172,23 @@ function App() {
     await setDoc(doc(db, 'products', newProduct.id), newProduct);
   };
 
-  const handleLogin = (user: User) => {
+  const handleLogin = async (user: User) => {
     localStorage.setItem('dark_matter_session', user.phone);
+    
+    // Fetch user's saved cart from Firestore FIRST to avoid race condition with useEffect
+    try {
+      const docSnap = await getDoc(doc(db, 'users', user.phone));
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.cart && data.cart.length > 0) {
+          setCartItems(data.cart);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load cloud cart:', e);
+    }
+    
+    // Now set currentUser, so the subsequent useEffect syncs the correct cart
     setCurrentUser(user);
     setCurrentPage('account');
   };

@@ -2,8 +2,9 @@ import React from 'react';
 import { X, Lock, Phone, User as UserIcon, Mail } from 'lucide-react';
 import type { User } from '../types';
 import { sendToGoogleSheet } from '../utils/googleSheets';
-import { collection, query, where, getDocs, setDoc, doc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { setDoc, doc, getDoc } from 'firebase/firestore';
+import { db, auth } from '../lib/firebase';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -53,8 +54,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
     }
 
     try {
-      const usersRef = collection(db, 'users');
-
       if (tab === 'register') {
         if (!formData.name.trim()) {
           setError('Please enter your full name.');
@@ -73,26 +72,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
         }
 
         // Check if account already exists
-        const q = query(usersRef, where('phone', '==', formData.phone));
-        const querySnapshot = await getDocs(q);
+        const userDocRef = doc(db, 'users', formData.phone);
+        const userDocSnap = await getDoc(userDocRef);
         
-        if (!querySnapshot.empty) {
+        if (userDocSnap.exists()) {
           setError('An account with this phone number already exists.');
           setLoading(false);
           return;
         }
 
-        // Create new account
+        // Create new account in Firebase Auth using dummy email
+        const dummyEmail = `${formData.phone}@darkmatter.local`;
+        await createUserWithEmailAndPassword(auth, dummyEmail, formData.password);
+
+        // Create new account in Firestore (without password!)
         const newUser = {
           name: formData.name,
           phone: formData.phone,
           email: formData.email || null,
-          password: formData.password, // In a real app, hash this!
           createdAt: new Date().toISOString(),
         };
 
         // Use the phone number as the document ID for easy querying
-        await setDoc(doc(db, 'users', formData.phone), newUser);
+        await setDoc(userDocRef, newUser);
         
         // Sync new user to Google Sheet in real-time
         sendToGoogleSheet({
@@ -100,7 +102,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
           name: newUser.name,
           phone: newUser.phone,
           email: newUser.email || undefined,
-          password: newUser.password,
         });
 
         // Auto login after registration
@@ -108,22 +109,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
         onClose();
       } else {
         // Login flow
-        const q = query(
-          usersRef, 
-          where('phone', '==', formData.phone),
-          where('password', '==', formData.password)
-        );
-        const querySnapshot = await getDocs(q);
-
-        if (querySnapshot.empty) {
+        const dummyEmail = `${formData.phone}@darkmatter.local`;
+        try {
+          await signInWithEmailAndPassword(auth, dummyEmail, formData.password);
+          
+          // Fetch user details from Firestore
+          const userDocRef = doc(db, 'users', formData.phone);
+          const userDocSnap = await getDoc(userDocRef);
+          
+          if (userDocSnap.exists()) {
+            const userData = userDocSnap.data();
+            onLogin({ name: userData.name, phone: userData.phone, email: userData.email || undefined });
+            onClose();
+          } else {
+            setError('User profile not found. Please contact support.');
+          }
+        } catch (authError: any) {
           setError('Invalid phone number or password.');
-          setLoading(false);
-          return;
         }
-
-        const userData = querySnapshot.docs[0].data();
-        onLogin({ name: userData.name, phone: userData.phone, email: userData.email || undefined });
-        onClose();
       }
     } catch (err) {
       console.error("Auth Error:", err);
