@@ -2,8 +2,8 @@ import React from 'react';
 import { BarChart3, ClipboardList, PlusSquare, DollarSign, Layers, ShoppingBag, LogOut, Users, ExternalLink, CheckCircle, AlertCircle, Settings, Edit2, Trash2, X, Upload } from 'lucide-react';
 import type { Order, Product, User } from '../types';
 import { getGoogleSheetUrl, setGoogleSheetUrl } from '../utils/googleSheets';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { storage } from '../lib/firebase';
+
+const IMGBB_API_KEY = 'c5f018eb93c2c5d8e1c0360454869faa';
 
 interface AdminPanelProps {
   orders: Order[];
@@ -88,26 +88,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     let imageUrl = newProduct.image.trim() || './images/tee-stealth.png';
 
-    // Upload image to Firebase Storage if a file was selected
+    // Upload image to ImgBB if a file was selected
     if (imageFile) {
       try {
-        const storageRef = ref(storage, `products/${Date.now()}-${imageFile.name}`);
-        const uploadTask = uploadBytesResumable(storageRef, imageFile);
+        setUploadProgress(10);
+        const formData = new FormData();
+        formData.append('image', imageFile);
+        formData.append('key', IMGBB_API_KEY);
 
-        imageUrl = await new Promise<string>((resolve, reject) => {
-          uploadTask.on(
-            'state_changed',
-            (snapshot) => {
-              const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-              setUploadProgress(progress);
-            },
-            (error) => reject(error),
-            async () => {
-              const url = await getDownloadURL(uploadTask.snapshot.ref);
-              resolve(url);
-            }
-          );
+        const response = await fetch('https://api.imgbb.com/1/upload', {
+          method: 'POST',
+          body: formData,
         });
+
+        setUploadProgress(80);
+        const data = await response.json();
+
+        if (data.success) {
+          imageUrl = data.data.display_url;
+          setUploadProgress(100);
+        } else {
+          console.error('ImgBB upload failed:', data);
+          setUploadProgress(null);
+          return;
+        }
       } catch (error) {
         console.error('Image upload failed:', error);
         setUploadProgress(null);
