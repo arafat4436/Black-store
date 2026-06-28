@@ -13,7 +13,7 @@ export const getGoogleSheetUrl = (): string => {
   return GOOGLE_SHEET_URL;
 };
 
-export const setGoogleSheetUrl = (url: string): void => {
+export const setGoogleSheetUrl = (_url: string): void => {
   // Deprecated since it is hardcoded now
   console.log("Google Sheet URL is now hardcoded.");
 };
