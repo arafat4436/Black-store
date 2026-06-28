@@ -23,12 +23,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
   });
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(false);
+  const [showForgot, setShowForgot] = React.useState(false);
 
   if (!isOpen) return null;
 
   const handleTabChange = (selectedTab: 'login' | 'register') => {
     setTab(selectedTab);
     setError('');
+    setShowForgot(false);
     setFormData({
       name: '',
       phone: '',
@@ -195,8 +197,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
         )}
 
         {/* Forms */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {tab === 'register' && (
+        {showForgot ? (
+          <div className="text-center py-8">
+            <h3 className="text-white text-lg font-bold uppercase tracking-widest mb-4">Reset Password</h3>
+            <p className="text-neutral-400 text-sm leading-relaxed mb-8">
+              Because your account is securely linked to your phone number, you must contact our Support Team to verify your identity and reset your password.
+            </p>
+            <a 
+              href="https://wa.me/8801700000000" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-block w-full bg-white text-black border border-white py-4 text-xs font-bold uppercase tracking-widest hover:bg-black hover:text-white transition-colors duration-300"
+            >
+              Contact Support via WhatsApp
+            </a>
+            <button
+              onClick={() => setShowForgot(false)}
+              className="mt-6 text-neutral-500 text-xs font-bold uppercase tracking-widest hover:text-white transition-colors"
+            >
+              Back to Login
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {tab === 'register' && (
             <div>
               <label className="block text-neutral-500 text-[10px] uppercase font-bold tracking-widest mb-1.5">FULL NAME</label>
               <div className="relative">
@@ -265,6 +289,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
                 className="w-full bg-brand-charcoal border border-neutral-850 text-white pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-neutral-500"
               />
             </div>
+            {tab === 'login' && (
+              <div className="mt-2 text-right">
+                <button
+                  type="button"
+                  onClick={() => setShowForgot(true)}
+                  className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest hover:text-white transition-colors"
+                >
+                  Forgot Password?
+                </button>
+              </div>
+            )}
           </div>
 
           {tab === 'register' && (
@@ -286,16 +321,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full bg-white text-black border border-white py-4 text-xs font-bold uppercase tracking-widest transition-colors duration-300 mt-6 ${
-              loading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-black hover:text-white'
-            }`}
-          >
-            {loading ? 'PROCESSING...' : (tab === 'login' ? 'LOG IN' : 'CREATE ACCOUNT')}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={loading}
+              className={`w-full bg-white text-black border border-white py-4 text-xs font-bold uppercase tracking-widest transition-colors duration-300 mt-6 ${
+                loading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-black hover:text-white'
+              }`}
+            >
+              {loading ? 'PROCESSING...' : (tab === 'login' ? 'LOG IN' : 'CREATE ACCOUNT')}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );
