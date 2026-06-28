@@ -6,14 +6,16 @@
 // redirects (302) POST requests, and browsers convert POST→GET on redirect,
 // causing doPost() to never fire. Using doGet() with encoded data is reliable.
 
-const GOOGLE_SHEET_URL_KEY = 'dark_matter_google_sheet_url';
+// Hardcoded URL so it works for all customers across all devices
+const GOOGLE_SHEET_URL = 'https://script.google.com/macros/s/AKfycby9NoS23H23zwPDLh0jmwkFX_nifAEwlZXkyTybIRNmWOUxaerhz_ey_oHWJuo0vwPeMA/exec';
 
 export const getGoogleSheetUrl = (): string => {
-  return localStorage.getItem(GOOGLE_SHEET_URL_KEY) || '';
+  return GOOGLE_SHEET_URL;
 };
 
 export const setGoogleSheetUrl = (url: string): void => {
-  localStorage.setItem(GOOGLE_SHEET_URL_KEY, url);
+  // Deprecated since it is hardcoded now
+  console.log("Google Sheet URL is now hardcoded.");
 };
 
 interface UserPayload {
