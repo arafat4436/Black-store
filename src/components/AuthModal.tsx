@@ -90,6 +90,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin }
         name: newUser.name,
         phone: newUser.phone,
         email: newUser.email,
+        password: newUser.password,
       });
 
       // Auto login after registration
