@@ -1,7 +1,9 @@
 import React from 'react';
-import { BarChart3, ClipboardList, PlusSquare, DollarSign, Layers, ShoppingBag, LogOut, Users, ExternalLink, CheckCircle, AlertCircle, Settings, Edit2, Trash2, X } from 'lucide-react';
+import { BarChart3, ClipboardList, PlusSquare, DollarSign, Layers, ShoppingBag, LogOut, Users, ExternalLink, CheckCircle, AlertCircle, Settings, Edit2, Trash2, X, Upload } from 'lucide-react';
 import type { Order, Product, User } from '../types';
 import { getGoogleSheetUrl, setGoogleSheetUrl } from '../utils/googleSheets';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { storage } from '../lib/firebase';
 
 interface AdminPanelProps {
   orders: Order[];
@@ -36,6 +38,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   });
   const [editingProductId, setEditingProductId] = React.useState<string | null>(null);
   const [productSuccess, setProductSuccess] = React.useState(false);
+  const [imageFile, setImageFile] = React.useState<File | null>(null);
+  const [imagePreview, setImagePreview] = React.useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = React.useState<number | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Analytics calculations
   const analytics = React.useMemo(() => {
@@ -66,19 +72,55 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     };
   }, [orders, products]);
 
-  const handleProductSubmit = (e: React.FormEvent) => {
+  const handleImageSelect = (file: File) => {
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setImagePreview(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProduct.name || !newProduct.price || !newProduct.description) return;
 
     const priceNum = parseFloat(newProduct.price);
     if (isNaN(priceNum)) return;
 
+    let imageUrl = newProduct.image.trim() || './images/tee-stealth.png';
+
+    // Upload image to Firebase Storage if a file was selected
+    if (imageFile) {
+      try {
+        const storageRef = ref(storage, `products/${Date.now()}-${imageFile.name}`);
+        const uploadTask = uploadBytesResumable(storageRef, imageFile);
+
+        imageUrl = await new Promise<string>((resolve, reject) => {
+          uploadTask.on(
+            'state_changed',
+            (snapshot) => {
+              const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+              setUploadProgress(progress);
+            },
+            (error) => reject(error),
+            async () => {
+              const url = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve(url);
+            }
+          );
+        });
+      } catch (error) {
+        console.error('Image upload failed:', error);
+        setUploadProgress(null);
+        return;
+      }
+    }
+
     const productToSave: Product = {
       id: editingProductId || `prod-${newProduct.category.toLowerCase()}-${Date.now()}`,
       name: newProduct.name,
       category: newProduct.category,
       price: priceNum,
-      image: newProduct.image.trim() || './images/tee-stealth.png',
+      image: imageUrl,
       description: newProduct.description,
     };
 
@@ -90,6 +132,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     
     setProductSuccess(true);
     setEditingProductId(null);
+    setImageFile(null);
+    setImagePreview(null);
+    setUploadProgress(null);
     setNewProduct({
       name: '',
       category: 'Apparel',
@@ -110,6 +155,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       image: prod.image,
       description: prod.description,
     });
+    setImageFile(null);
+    setImagePreview(prod.image);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -440,16 +487,52 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       />
                     </div>
 
-                    {/* Image URL */}
+                    {/* Image Upload */}
                     <div>
-                      <label className="block text-neutral-500 text-[10px] uppercase font-bold tracking-widest mb-2">IMAGE FILE PATH (OPTIONAL)</label>
+                      <label className="block text-neutral-500 text-[10px] uppercase font-bold tracking-widest mb-2">PRODUCT IMAGE</label>
                       <input
-                        type="text"
-                        placeholder="./images/tee-stealth.png"
-                        value={newProduct.image}
-                        onChange={(e) => setNewProduct({ ...newProduct, image: e.target.value })}
-                        className="w-full bg-black border border-neutral-800 text-white px-4 py-3 text-sm focus:outline-none focus:border-neutral-500"
+                        type="file"
+                        ref={fileInputRef}
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleImageSelect(file);
+                        }}
+                        className="hidden"
                       />
+                      <div
+                        onClick={() => fileInputRef.current?.click()}
+                        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onDrop={(e) => {
+                          e.preventDefault(); e.stopPropagation();
+                          const file = e.dataTransfer.files?.[0];
+                          if (file && file.type.startsWith('image/')) handleImageSelect(file);
+                        }}
+                        className="w-full bg-black border border-dashed border-neutral-700 hover:border-neutral-500 text-white px-4 py-6 text-sm focus:outline-none cursor-pointer transition-colors flex flex-col items-center justify-center gap-2"
+                      >
+                        {imagePreview ? (
+                          <div className="flex items-center gap-4 w-full">
+                            <img src={imagePreview} alt="Preview" className="w-16 h-16 object-cover border border-neutral-800" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-white uppercase truncate">{imageFile ? imageFile.name : 'Current Image'}</p>
+                              <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Click to change</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <Upload className="w-5 h-5 text-neutral-500" />
+                            <p className="text-[10px] text-neutral-500 uppercase tracking-widest font-bold">Click or drag image here</p>
+                          </>
+                        )}
+                      </div>
+                      {uploadProgress !== null && uploadProgress < 100 && (
+                        <div className="mt-2 w-full bg-neutral-900 h-1.5">
+                          <div
+                            className="bg-white h-1.5 transition-all duration-300"
+                            style={{ width: `${uploadProgress}%` }}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
 
