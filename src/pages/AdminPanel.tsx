@@ -1,6 +1,6 @@
 import React from 'react';
-import { BarChart3, ClipboardList, PlusSquare, DollarSign, Layers, ShoppingBag, LogOut, Users, ExternalLink, CheckCircle, AlertCircle } from 'lucide-react';
-import type { Order, Product } from '../types';
+import { BarChart3, ClipboardList, PlusSquare, DollarSign, Layers, ShoppingBag, LogOut, Users, ExternalLink, CheckCircle, AlertCircle, Settings, Edit2, Trash2, X } from 'lucide-react';
+import type { Order, Product, User } from '../types';
 import { getGoogleSheetUrl, setGoogleSheetUrl } from '../utils/googleSheets';
 
 interface AdminPanelProps {
@@ -8,6 +8,9 @@ interface AdminPanelProps {
   onUpdateOrderStatus: (orderId: string, newStatus: Order['status']) => void;
   products: Product[];
   onAddProduct: (product: Product) => void;
+  onUpdateProduct: (product: Product) => void;
+  onDeleteProduct: (productId: string) => void;
+  users: User[];
   onLogout?: () => void;
 }
 
@@ -16,9 +19,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onUpdateOrderStatus,
   products,
   onAddProduct,
+  onUpdateProduct,
+  onDeleteProduct,
+  users,
   onLogout,
 }) => {
-  const [activeTab, setActiveTab] = React.useState<'analytics' | 'orders' | 'products' | 'customers'>('analytics');
+  const [activeTab, setActiveTab] = React.useState<'analytics' | 'orders' | 'products' | 'customers' | 'settings'>('analytics');
   
   // Product form state
   const [newProduct, setNewProduct] = React.useState({
@@ -28,6 +34,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     image: '',
     description: '',
   });
+  const [editingProductId, setEditingProductId] = React.useState<string | null>(null);
   const [productSuccess, setProductSuccess] = React.useState(false);
 
   // Analytics calculations
@@ -66,20 +73,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const priceNum = parseFloat(newProduct.price);
     if (isNaN(priceNum)) return;
 
-    // Build new product
-    const generatedId = `prod-${newProduct.category.toLowerCase()}-${Date.now()}`;
-    const productToAdd: Product = {
-      id: generatedId,
+    const productToSave: Product = {
+      id: editingProductId || `prod-${newProduct.category.toLowerCase()}-${Date.now()}`,
       name: newProduct.name,
       category: newProduct.category,
       price: priceNum,
-      // Default placeholder if image is empty
       image: newProduct.image.trim() || './images/tee-stealth.png',
       description: newProduct.description,
     };
 
-    onAddProduct(productToAdd);
+    if (editingProductId) {
+      onUpdateProduct(productToSave);
+    } else {
+      onAddProduct(productToSave);
+    }
+    
     setProductSuccess(true);
+    setEditingProductId(null);
     setNewProduct({
       name: '',
       category: 'Apparel',
@@ -89,6 +99,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     });
 
     setTimeout(() => setProductSuccess(false), 3000);
+  };
+
+  const handleEditClick = (prod: Product) => {
+    setEditingProductId(prod.id);
+    setNewProduct({
+      name: prod.name,
+      category: prod.category,
+      price: prod.price.toString(),
+      image: prod.image,
+      description: prod.description,
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Google Sheet URL state
@@ -180,6 +202,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           >
             <Users className="w-4 h-4" />
             👥 Users & Customers
+          </button>
+
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`w-full flex items-center gap-3 px-5 py-4 text-xs font-bold uppercase tracking-widest border transition-all ${
+              activeTab === 'settings'
+                ? 'bg-white text-black border-white'
+                : 'bg-brand-charcoal text-neutral-400 border-neutral-900 hover:border-neutral-700'
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            ⚙️ Settings
           </button>
         </div>
 
@@ -332,11 +366,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {activeTab === 'products' && (
             <div className="space-y-8 animate-fade-in">
               <div className="bg-brand-charcoal border border-neutral-900 p-6 md:p-8">
-                <h2 className="text-xl font-bold uppercase tracking-wider text-white mb-6">Create New Release Drop</h2>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-bold uppercase tracking-wider text-white">
+                    {editingProductId ? 'Edit Product' : 'Create New Release Drop'}
+                  </h2>
+                  {editingProductId && (
+                    <button
+                      onClick={() => {
+                        setEditingProductId(null);
+                        setNewProduct({ name: '', category: 'Apparel', price: '', image: '', description: '' });
+                      }}
+                      className="text-neutral-500 hover:text-white flex items-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors"
+                    >
+                      <X className="w-4 h-4" /> Cancel Edit
+                    </button>
+                  )}
+                </div>
 
                 {productSuccess && (
                   <div className="bg-neutral-950 border border-neutral-850 p-4 text-center text-brand-silver font-semibold text-xs uppercase tracking-widest mb-6 animate-fade-in">
-                    ✓ PRODUCT APPENDED TO STORE CATALOG SUCCESSFUL
+                    {editingProductId ? '✓ PRODUCT UPDATED SUCCESSFULLY' : '✓ PRODUCT APPENDED TO STORE CATALOG SUCCESSFUL'}
                   </div>
                 )}
 
@@ -421,7 +470,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     type="submit"
                     className="w-full bg-white text-black hover:bg-black hover:text-white border border-white py-4 text-xs font-bold uppercase tracking-widest transition-colors duration-300 mt-2"
                   >
-                    ADD PRODUCT DROP
+                    {editingProductId ? 'SAVE CHANGES' : 'ADD PRODUCT DROP'}
                   </button>
                 </form>
               </div>
@@ -438,7 +487,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         <p className="font-bold text-white uppercase">{prod.name}</p>
                         <p className="text-[10px] text-neutral-500 uppercase mt-0.5">{prod.category} | ID: {prod.id}</p>
                       </div>
-                      <p className="font-semibold text-white">৳{prod.price.toLocaleString()}</p>
+                      <div className="flex items-center gap-4">
+                        <p className="font-semibold text-white">৳{prod.price.toLocaleString()}</p>
+                        <div className="flex items-center gap-2 border-l border-neutral-800 pl-4">
+                          <button
+                            onClick={() => handleEditClick(prod)}
+                            className="p-2 text-neutral-500 hover:text-white hover:bg-neutral-900 transition-colors"
+                            title="Edit Product"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Are you sure you want to permanently delete "${prod.name}"?`)) {
+                                onDeleteProduct(prod.id);
+                              }
+                            }}
+                            className="p-2 text-red-900 hover:text-red-500 hover:bg-red-950/30 transition-colors"
+                            title="Delete Product"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -446,8 +517,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           )}
 
-          {/* TAB 4: GOOGLE SHEETS INTEGRATION */}
+          {/* TAB 4: USERS & CUSTOMERS */}
           {activeTab === 'customers' && (
+            <div className="space-y-6 animate-fade-in">
+              <h2 className="text-xl font-bold uppercase tracking-wider text-white">Registered Users</h2>
+
+              {users.length === 0 ? (
+                <div className="text-center py-20 bg-brand-charcoal border border-neutral-950">
+                  <p className="text-neutral-500 uppercase font-bold tracking-widest text-xs">No registered users found.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-neutral-900">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-brand-charcoal border-b border-neutral-900 text-neutral-400 uppercase tracking-widest font-bold">
+                        <th className="p-4 font-bold">Name</th>
+                        <th className="p-4 font-bold">Phone Number</th>
+                        <th className="p-4 font-bold">Email Address</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-950">
+                      {users.map((user, i) => (
+                        <tr key={i} className="hover:bg-brand-charcoal/50 bg-black/40 text-neutral-300">
+                          <td className="p-4 font-semibold text-white uppercase">{user.name}</td>
+                          <td className="p-4 font-mono tracking-wider">{user.phone}</td>
+                          <td className="p-4">{user.email || 'N/A'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 5: GOOGLE SHEETS INTEGRATION & SETTINGS */}
+          {activeTab === 'settings' && (
             <div className="space-y-8 animate-fade-in">
               {/* Connection Status Banner */}
               <div className={`border p-6 md:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 ${

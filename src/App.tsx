@@ -13,7 +13,7 @@ import { AuthModal } from './components/AuthModal';
 import { AdminLogin } from './components/AdminLogin';
 import { products as defaultProducts } from './data/products';
 import type { Product, CartItem, Order, User } from './types';
-import { collection, onSnapshot, doc, getDoc, setDoc, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc, setDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { db } from './lib/firebase';
 
 function App() {
@@ -29,6 +29,7 @@ function App() {
   const [currentUser, setCurrentUser] = React.useState<User | null>(null);
   const [orders, setOrders] = React.useState<Order[]>([]);
   const [productsList, setProductsList] = React.useState<Product[]>(defaultProducts);
+  const [usersList, setUsersList] = React.useState<User[]>([]);
 
   const [cartOpen, setCartOpen] = React.useState(false);
   const [checkoutOpen, setCheckoutOpen] = React.useState(false);
@@ -102,6 +103,19 @@ function App() {
     return () => unsubscribe();
   }, [isAdminAuthenticated, currentUser]);
 
+  // 5. Real-time Users Sync for Admin
+  useEffect(() => {
+    if (isAdminAuthenticated) {
+      const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
+        const liveUsers = snapshot.docs.map(doc => doc.data() as User);
+        setUsersList(liveUsers);
+      });
+      return () => unsubscribe();
+    } else {
+      setUsersList([]);
+    }
+  }, [isAdminAuthenticated]);
+
   // Toast timer auto-clear
   useEffect(() => {
     if (toast) {
@@ -170,6 +184,14 @@ function App() {
   const handleAddProduct = async (newProduct: Product) => {
     // Add product to Firestore
     await setDoc(doc(db, 'products', newProduct.id), newProduct);
+  };
+
+  const handleUpdateProduct = async (updatedProduct: Product) => {
+    await setDoc(doc(db, 'products', updatedProduct.id), updatedProduct, { merge: true });
+  };
+
+  const handleDeleteProduct = async (productId: string) => {
+    await deleteDoc(doc(db, 'products', productId));
   };
 
   const handleLogin = async (user: User) => {
@@ -242,6 +264,9 @@ function App() {
           onUpdateOrderStatus={handleUpdateOrderStatus} 
           products={productsList} 
           onAddProduct={handleAddProduct}
+          onUpdateProduct={handleUpdateProduct}
+          onDeleteProduct={handleDeleteProduct}
+          users={usersList}
           onLogout={() => {
             setIsAdminAuthenticated(false);
             setCurrentPage('home');
