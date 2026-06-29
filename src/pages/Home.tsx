@@ -34,7 +34,7 @@ export const Home: React.FC<HomeProps> = ({ onNavigate, products }) => {
           <p className="text-brand-silver uppercase tracking-[0.5em] text-xs md:text-sm font-semibold mb-4">
             Dark Matter Apparel
           </p>
-          <h1 className="text-5xl md:text-8xl font-black tracking-tight text-white mb-6 uppercase leading-none">
+          <h1 className="text-4xl sm:text-5xl md:text-8xl font-black tracking-tight text-white mb-6 uppercase leading-none">
             EMBRACE THE <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-neutral-200 via-neutral-400 to-neutral-600">
               DARKNESS
