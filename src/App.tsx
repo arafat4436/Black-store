@@ -88,7 +88,7 @@ function App() {
       q = collection(db, 'orders');
     } else if (currentUser) {
       // User sees their own orders
-      q = query(collection(db, 'orders'), where('customer.phone', '==', currentUser.phone));
+      q = query(collection(db, 'orders'), where('userPhone', '==', currentUser.phone));
     } else {
       setOrders([]);
       return;
