@@ -53,16 +53,36 @@ ${itemsList}
  * Send order confirmation email to Customer via EmailJS
  */
 export const notifyCustomerEmail = async (order: Order, customerEmail: string) => {
-  const itemsList = order.items
-    .map((item) => `${item.product.name} (${item.size}) x${item.quantity}`)
-    .join(', ');
+  // Generate HTML for the items list to include images
+  const itemsHtml = order.items
+    .map(
+      (item) => `
+    <tr>
+      <td style="padding: 15px 0; border-bottom: 1px solid #eeeeee;">
+        <img src="${
+          item.product.image.startsWith('http')
+            ? item.product.image
+            : 'https://raw.githubusercontent.com/arafat4436/Black-store/main/public/' + item.product.image.replace('./', '')
+        }" alt="${item.product.name}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 4px; display: block;">
+      </td>
+      <td style="padding: 15px 15px; border-bottom: 1px solid #eeeeee; vertical-align: top;">
+        <h4 style="margin: 0 0 5px 0; font-family: sans-serif; font-size: 16px; color: #333333;">${item.product.name}</h4>
+        <p style="margin: 0; font-family: sans-serif; font-size: 14px; color: #777777;">Size: ${item.size} <br> QTY: ${item.quantity}</p>
+      </td>
+      <td style="padding: 15px 0; border-bottom: 1px solid #eeeeee; vertical-align: top; text-align: right;">
+        <strong style="font-family: sans-serif; font-size: 16px; color: #000000;">৳${(item.product.price * item.quantity).toLocaleString()}</strong>
+      </td>
+    </tr>
+    `
+    )
+    .join('');
 
   const templateParams = {
     customer_name: order.customer.name,
     customer_email: customerEmail,
     order_id: order.orderId,
     order_total: order.total.toLocaleString(),
-    order_items: itemsList,
+    order_items_html: itemsHtml,
     delivery_charge: order.deliveryCharge.toString(),
     payment_method: order.paymentMethod,
   };
