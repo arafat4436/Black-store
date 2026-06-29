@@ -15,6 +15,7 @@ import { products as defaultProducts } from './data/products';
 import type { Product, CartItem, Order, User } from './types';
 import { collection, onSnapshot, doc, getDoc, setDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { db } from './lib/firebase';
+import { notifyAdminTelegram, notifyCustomerEmail } from './utils/notifications';
 
 function App() {
   const [currentPage, setCurrentPage] = React.useState<string>('home');
@@ -174,6 +175,14 @@ function App() {
   const handleOrderPlaced = async (newOrder: Order) => {
     // Save order to Firestore
     await setDoc(doc(db, 'orders', newOrder.orderId), newOrder);
+
+    // Notify Admin via Telegram
+    notifyAdminTelegram(newOrder);
+
+    // Notify Customer via Email (if they have an email on file)
+    if (currentUser?.email) {
+      notifyCustomerEmail(newOrder, currentUser.email);
+    }
   };
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: Order['status']) => {
