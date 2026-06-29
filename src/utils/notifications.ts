@@ -4,7 +4,7 @@ const TELEGRAM_BOT_TOKEN = '8929494628:AAER_m3BwpmHs8DuCccUBqsk5IRRIDkH5S0';
 const TELEGRAM_CHAT_ID = '1950215741';
 
 const EMAILJS_SERVICE_ID = 'service_uq6m8hl';
-const EMAILJS_TEMPLATE_ID = 'template_tpv8lyi';
+const EMAILJS_TEMPLATE_ID = 'template_rt7qkzk';
 const EMAILJS_PUBLIC_KEY = '0tbIfB3dfmte29Wzk';
 
 /**
